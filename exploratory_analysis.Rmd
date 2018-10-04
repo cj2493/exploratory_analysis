@@ -3,28 +3,119 @@ title: "explanatory_analysis"
 author: "Courtney Johnson"
 date: "October 4, 2018"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+
+theme_set(theme_bw() + theme(legend.position = "bottom"))
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(c("USW00094728", "USC00519397", "USS0023B17S"),
+                      var = c("PRCP", "TMIN", "TMAX"), 
+                      date_min = "2016-01-01",
+                      date_max = "2016-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY", 
+                      USC00519397 = "Waikiki_HA",
+                      USS0023B17S = "Waterhole_WA"),
+    tmin = tmin / 10,
+    tmax = tmax / 10,
+    month = lubridate::floor_date(date, unit = "month")) %>%
+  select(name, id, date, month, everything())
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r}
+weather_df %>%
+  group_by(name, month)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+COunt first
+```{r}
+weather_df %>%
+  group_by(month) %>%
+  summarize(number = n())
+
+weather_df %>%
+  count(name, month)
+```
+
+
+## Grouped summaries
+
+```{r}
+month_df = weather_df %>%
+  group_by(name, month) %>%
+  summarize(number = n(),
+            mean_tmax = mean(tmax, na.rm = TRUE),
+            median_prcp = median(prcp, na.rm = TRUE),
+            sd_tmin = sd(tmin, na.rm = TRUE)) 
+```
+
+
+
+```{r}
+weather_df %>%
+  group_by(name, month) %>%
+  summarize(mean_tmax = mean(tmax, na.rm = TRUE)) %>%
+  spread(key = month, value = mean_tmax) %>%
+  knitr::kable(digits = 3)
+```
+
+```{r}
+weather_df %>%
+  group_by(name, month) %>%
+  summarize(mean_tmax = mean(tmax, na.rm = TRUE)) %>%
+  ggplot(aes(x = month, y = mean_tmax, color = name)) +
+  geom_point() + geom_line() +
+  theme(legend.position = "bottom")
+```
+
+
+## Grouped mutate
+
+```{r}
+weather_df %>%
+  group_by(name) %>%
+  mutate(mean_tmax = mean(tmax, na.rm = TRUE),
+         centered_tmax = tmax - mean_tmax) %>%
+  ggplot(aes(x = date, y = centered_tmax, color = name)) +
+  geom_point() 
+```
+
+## Window Functions
+
+Use ranks
+
+```{r}
+weather_df %>%
+  group_by(name, month) %>%
+  mutate(tmax_rank = min_rank(tmax)) %>% View
+```
+
+```{r}
+weather_df %>%
+  group_by(name) %>%
+  mutate(lag_tmax = lag(tmax)) %>% View
+```
+
+```{r}
+weather_df %>%
+  group_by(name) %>%
+  mutate(one_day_change = tmax - lag(tmax)) %>%
+  summarize(sd_one_day_change = sd(one_day_change, na.rm = TRUE))
+```
+
+
